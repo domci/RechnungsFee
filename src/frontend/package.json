@@ -21,7 +21,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.71.2",
-    "react-router-dom": "^7.13.0",
+    "react-router-dom": "^7.18.4",
     "recharts": "^3.9.2",
     "zod": "^4.3.6"
   },
@@ -39,6 +39,6 @@
     "tailwindcss": "^4.2.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
-    "vite": "^7.3.1"
+    "vite": "^7.3.7"
   }
 }
