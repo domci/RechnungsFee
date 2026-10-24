@@ -29,14 +29,18 @@ pip install --quiet pyinstaller
 
 mkdir -p "$BINARIES_DIR"
 
+# Getrennter Build-Pfad pro Lauf; TMPDIR respektieren (parallele Builds).
+BUILD_TMP="$(mktemp -d "${TMPDIR:-/tmp}/rechnungsfee-sidecar.XXXXXX")"
+trap 'rm -rf "$BUILD_TMP"' EXIT
+
 # Binary bauen
 cd "$BACKEND_DIR"
 pyinstaller \
     --onefile \
     --name backend \
     --distpath "$BINARIES_DIR" \
-    --workpath /tmp/pyinstaller_build \
-    --specpath /tmp/pyinstaller_spec \
+    --workpath "$BUILD_TMP/build" \
+    --specpath "$BUILD_TMP/spec" \
     --hidden-import uvicorn.logging \
     --hidden-import uvicorn.loops \
     --hidden-import uvicorn.loops.auto \
