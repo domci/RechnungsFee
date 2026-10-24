@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  workflow_call:
+  workflow_dispatch:
   pull_request:
     branches: [main]
   push:
@@ -28,7 +30,71 @@ jobs:
           cd src/backend
           pip install -r requirements-dev.txt
 
-      - name: pytest ausführen
+      - name: pytest ausführen (isoliertes Datenverzeichnis)
         run: |
+          mkdir -p "$RUNNER_TEMP/rechnungsfee-test-home"
           cd src/backend
-          python -m pytest tests/ -v --tb=short
+          HOME="$RUNNER_TEMP/rechnungsfee-test-home" python -m pytest tests/ -v --tb=short
+
+      - name: Python-Abhängigkeiten prüfen
+        run: |
+          python -m pip install pip-audit
+          pip-audit -r src/backend/requirements.txt
+          pip-audit -r src/backend/requirements-dev.txt
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - name: Frontend installieren, prüfen und bauen
+        working-directory: src/frontend
+        run: |
+          npm ci
+          npm audit
+          npm run build
+
+  desktop-build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux-Abhängigkeiten installieren
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Backend-Sidecar bauen
+        run: |
+          pip install -r src/backend/requirements.txt
+          bash scripts/build-sidecar.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/package-lock.json
+      - name: Frontend bauen
+        working-directory: src/frontend
+        run: npm ci && npm run build
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Desktop bauen (ohne Veröffentlichung)
+        run: npx --yes --package @tauri-apps/cli@2 tauri build --no-bundle --ci -- --locked
+
+  desktop-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo-Abhängigkeiten prüfen (einschließlich Unsoundness)
+        working-directory: src-tauri
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit --deny unsound

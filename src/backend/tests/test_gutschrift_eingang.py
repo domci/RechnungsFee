@@ -93,9 +93,13 @@ def test_gutschrift_bar_erstattung_erhoeht_kassenstand_und_bucht_negative_ausgab
     assert gutschrift.zahlungsstatus == "bezahlt"
 
 
-def test_gutschrift_ohne_kategorie_wird_bei_zahlung_verweigert(db):
-    """Eingangsrechnung ohne Kategorie (Alt-Fall vor Kategorie-Pflicht) - Gutschrift-Zahlung
-    muss klar ablehnen statt fälschlich eine Erlös-Kategorie zu verwenden."""
+@pytest.mark.parametrize("vor_cutover", [True, False])
+def test_gutschrift_ohne_kategorie_wird_verweigert(db, vor_cutover):
+    """Alt-Fall: Zahlung abweisen; ab Cutover schon die Finalisierung.
+
+    create_gutschrift() verwendet heute als Datum. Der Test setzt das Datum
+    explizit, damit die beiden Schutzpfade nicht vom Ausführungstag abhängen.
+    """
     rechnung = Rechnung(
         typ="eingang", rechnungsnummer="ER-2026-2", datum=date(2026, 3, 1),
         brutto_gesamt=Decimal("119.00"), netto_gesamt=Decimal("100.00"), ust_gesamt=Decimal("19.00"),
@@ -111,14 +115,30 @@ def test_gutschrift_ohne_kategorie_wird_bei_zahlung_verweigert(db):
     db.commit()
 
     resp = create_gutschrift(rechnung.id, db)
-    finalisiere_rechnung(resp.id, db)
-
+    from datetime import timedelta
+    from api.rechnungen import CUTOVER_DATUM_VORSTEUER
     from fastapi import HTTPException
-    with pytest.raises(HTTPException) as exc:
-        zahlung_bar_erstellen(
-            resp.id, BarZahlungCreate(betrag=Decimal("119.00"), datum=date(2026, 3, 5), zahlungsart="Bar"), db,
-        )
+
+    gutschrift = db.get(Rechnung, resp.id)
+    gutschrift.datum = CUTOVER_DATUM_VORSTEUER - timedelta(days=1) if vor_cutover else CUTOVER_DATUM_VORSTEUER
+    db.commit()
+
+    if vor_cutover:
+        finalisiere_rechnung(resp.id, db)
+        with pytest.raises(HTTPException) as exc:
+            zahlung_bar_erstellen(
+                resp.id, BarZahlungCreate(betrag=Decimal("119.00"), datum=gutschrift.datum, zahlungsart="Bar"), db,
+            )
+    else:
+        with pytest.raises(HTTPException) as exc:
+            finalisiere_rechnung(resp.id, db)
+        # Wie get_db() beim fehlgeschlagenen HTTP-Request: nicht committen.
+        db.rollback()
+        db.refresh(gutschrift)
+        assert gutschrift.ist_entwurf is True
     assert exc.value.status_code == 422
+    assert "Kategorie" in exc.value.detail
+    assert db.query(Journaleintrag).count() == 0
 
 
 def test_gutschrift_mindert_euer_ausgaben_zeile(db):
