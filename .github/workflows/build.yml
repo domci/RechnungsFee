@@ -12,6 +12,11 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  security:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   typecheck:
     runs-on: ubuntu-22.04
     steps:
@@ -29,7 +34,7 @@ jobs:
         run: npx tsc --noEmit
 
   build:
-    needs: typecheck
+    needs: [typecheck, security]
     strategy:
       fail-fast: false
       matrix:
@@ -391,7 +396,6 @@ jobs:
   # ── latest.json generieren ────────────────────────────────────────────────
   updater-json:
     needs: build
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -453,7 +457,6 @@ jobs:
   # ── Release Notes generieren & Release veröffentlichen ───────────────────
   release-notes:
     needs: updater-json
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -531,7 +534,6 @@ jobs:
   # ── Website-Workflow triggern ─────────────────────────────────────────────
   deploy-web:
     needs: release-notes
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Website-Workflow triggern
