@@ -32,6 +32,7 @@ from database.models import (
     Unternehmen,
 )
 from api.rechnungen import APP_DATA_DIR, BELEG_DIR, ERLAUBTE_MIME_TYPES
+from utils.zahlungsziel import standard_zahlungsziel
 
 router = APIRouter(prefix="/api/wiederkehrend", tags=["Wiederkehrend"])
 
@@ -233,8 +234,8 @@ def _erstelle_entwurf(vorlage: Rechnungsvorlage, db: Session) -> tuple[int, str,
     unt = db.query(Unternehmen).first()
     ist_kleinunternehmer = unt.ist_kleinunternehmer if unt else False
     zt = vorlage.zahlungsziel_tage
-    if zt is None and unt:
-        zt = int(getattr(unt, "standard_zahlungsziel", 14) or 14)
+    if zt is None:
+        zt = standard_zahlungsziel(unt)
 
     rechnungsdatum = vorlage.naechstes_datum
     rechnungsnummer = _naechste_rechnungsnr(rechnungsdatum, db)
@@ -243,7 +244,7 @@ def _erstelle_entwurf(vorlage: Rechnungsvorlage, db: Session) -> tuple[int, str,
         typ="ausgang",
         rechnungsnummer=rechnungsnummer,
         datum=rechnungsdatum,
-        faellig_am=rechnungsdatum + timedelta(days=zt) if zt else None,
+        faellig_am=rechnungsdatum + timedelta(days=zt),
         kunde_id=vorlage.kunde_id,
         notizen=vorlage.notizen,
         ist_entwurf=True,

@@ -22,6 +22,7 @@ from database.connection import get_db, APP_DATA_DIR
 from database.models import Unternehmen, Rechnung, DokumentenPaket, KundeLieferadresse
 from utils.pdf_rechnung import generate_rechnung_pdf
 from utils.pdf_rechnung_vorlage1 import generate_rechnung_pdf_vorlage1
+from utils.pdf_rechnung_vorlage2 import generate_rechnung_pdf_vorlage2
 from utils.zugferd import generate_zugferd_pdf
 from utils.pdf_kopie import speichere_original_pdf, lade_original_mit_kopie_stempel
 
@@ -110,11 +111,14 @@ def _pdf_bytes_fuer(rechnung_id: int, db: Session) -> tuple[bytes, str]:
 
     if kunde_zugferd:
         try:
-            pdf_bytes = generate_zugferd_pdf(r, unt_dict)
+            pdf_bytes = generate_zugferd_pdf(r, unt_dict, pdf_vorlage=u.pdf_vorlage if u else 0)
         except Exception:
-            pdf_bytes = generate_rechnung_pdf(r, unt_dict, ist_entwurf=r.ist_entwurf, ist_netto=ist_netto)
+            fallback_generator = generate_rechnung_pdf_vorlage2 if u and u.pdf_vorlage == 2 else generate_rechnung_pdf
+            pdf_bytes = fallback_generator(r, unt_dict, ist_entwurf=r.ist_entwurf, ist_netto=ist_netto)
     elif u and u.pdf_vorlage == 1:
         pdf_bytes = generate_rechnung_pdf_vorlage1(r, unt_dict, ist_entwurf=r.ist_entwurf, ist_netto=ist_netto)
+    elif u and u.pdf_vorlage == 2:
+        pdf_bytes = generate_rechnung_pdf_vorlage2(r, unt_dict, ist_entwurf=r.ist_entwurf, ist_netto=ist_netto)
     else:
         pdf_bytes = generate_rechnung_pdf(r, unt_dict, ist_entwurf=r.ist_entwurf, ist_netto=ist_netto)
 
