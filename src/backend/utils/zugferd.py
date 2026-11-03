@@ -324,7 +324,7 @@ def generate_zugferd_xml(rechnung, unternehmen: dict) -> bytes:
     return xml
 
 
-def generate_zugferd_pdf(rechnung, unternehmen: dict) -> bytes:
+def generate_zugferd_pdf(rechnung, unternehmen: dict, pdf_vorlage: int | None = None) -> bytes:
     """Erzeugt ein ZUGFeRD PDF/A-3 – normales PDF + eingebettetes XRechnung-XML."""
     # saxonche ist Top-Level-Import in facturx aber wird nur für XSD/Schematron-Validierung
     # gebraucht – wir nutzen check_xsd=False, check_schematron=False. Falls saxonche im
@@ -339,10 +339,14 @@ def generate_zugferd_pdf(rechnung, unternehmen: dict) -> bytes:
     import facturx
     import facturx.facturx as _fx
     from utils.pdf_rechnung import generate_rechnung_pdf
+    from utils.pdf_rechnung_vorlage2 import generate_rechnung_pdf_vorlage2
 
     # sRGB-OutputIntent für PDF/A-3-Konformität
-    pdf_bytes = generate_rechnung_pdf(rechnung, unternehmen, ist_kopie=False, ist_entwurf=False,
-                                      mit_output_intent=True)
+    if pdf_vorlage is None:
+        pdf_vorlage = int(unternehmen.get("pdf_vorlage") or 0)
+    generator = generate_rechnung_pdf_vorlage2 if pdf_vorlage == 2 else generate_rechnung_pdf
+    pdf_bytes = generator(rechnung, unternehmen, ist_kopie=False, ist_entwurf=False,
+                          mit_output_intent=True)
     xml_bytes = generate_zugferd_xml(rechnung, unternehmen)
 
     # XRechnung-Profil in facturx registrieren (einmalig; idempotent)

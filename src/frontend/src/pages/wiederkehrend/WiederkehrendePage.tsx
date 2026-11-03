@@ -250,7 +250,7 @@ function VorlageFormular({
     if (defaultAuftrag?.kunde_id) return String(defaultAuftrag.kunde_id)
     return ''
   })
-  const [zahlungsziel, setZahlungsziel] = useState(initial?.zahlungsziel_tage ? String(initial.zahlungsziel_tage) : '')
+  const [zahlungsziel, setZahlungsziel] = useState(initial?.zahlungsziel_tage != null ? String(initial.zahlungsziel_tage) : '')
   const [notizen, setNotizen] = useState(initial?.notizen ?? '')
   const [auftragId, setAuftragId] = useState(() => {
     if (initial?.auftrag_id) return String(initial.auftrag_id)

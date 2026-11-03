@@ -33,7 +33,9 @@ from utils.vorsteuer_soll import CUTOVER_DATUM as CUTOVER_DATUM_VORSTEUER
 from utils.mahngebuehr_verrechnung import offene_mahngebuehr_summe, verrechne_mahngebuehren
 from utils.pdf_rechnung import generate_rechnung_pdf
 from utils.pdf_rechnung_vorlage1 import generate_rechnung_pdf_vorlage1
+from utils.pdf_rechnung_vorlage2 import generate_rechnung_pdf_vorlage2
 from utils.zugferd import generate_zugferd_pdf
+from utils.zahlungsziel import standard_zahlungsziel
 from utils.rechnungs_parser import analysiere_datei
 from utils.pdf_kopie import speichere_original_pdf, lade_original_mit_kopie_stempel
 from .schemas_rechnungen import (
@@ -1344,21 +1346,18 @@ def create_rechnung(data: RechnungCreate, db: Session = Depends(get_db)):
                 prefix = "RE" if data.typ == "ausgang" else "ER"
                 rechnungsnummer = f"{prefix}-{str(data.datum.year)[-2:]}{count + 1:04d}"
 
-    # Proforma: faellig_am aus Unternehmens-Standard wenn nicht übergeben; kein Skonto
-    proforma_faellig_am = data.faellig_am
-    if data.dokument_typ == "Proforma" and proforma_faellig_am is None:
-        _unt = db.query(Unternehmen).first()
-        if _unt:
-            from datetime import timedelta as _td
-            _zt = int(getattr(_unt, "standard_zahlungsziel", 14) or 14)
-            proforma_faellig_am = data.datum + _td(days=_zt)
+    # Ausgangsrechnung/Proforma ohne Fälligkeit: Unternehmensstandard; 0 = sofort.
+    faellig_am = data.faellig_am
+    if data.typ == "ausgang" and data.dokument_typ in ("Rechnung", "Proforma") and faellig_am is None:
+        from datetime import timedelta as _td
+        faellig_am = data.datum + _td(days=standard_zahlungsziel(unternehmen))
 
     rechnung = Rechnung(
         typ=data.typ,
         rechnungsnummer=rechnungsnummer,
         datum=data.datum,
         leistung_von=data.leistung_von, leistung_bis=data.leistung_bis,
-        faellig_am=proforma_faellig_am if data.dokument_typ == "Proforma" else data.faellig_am,
+        faellig_am=faellig_am,
         kunde_id=data.kunde_id,
         lieferant_id=data.lieferant_id,
         partner_freitext=data.partner_freitext,
@@ -1971,16 +1970,20 @@ def rechnung_als_pdf(rechnung_id: int, vorlage: int = -1, download: bool = False
     )
     if kunde_zugferd:
         try:
-            pdf_bytes = generate_zugferd_pdf(rechnung, unt_dict)
+            pdf_bytes = generate_zugferd_pdf(rechnung, unt_dict, pdf_vorlage=vorlage if vorlage >= 0 else int(unt_dict.get("pdf_vorlage") or 0))
         except Exception as e:
             import logging
             logging.getLogger(__name__).error("ZUGFeRD-Generierung fehlgeschlagen: %s", e, exc_info=True)
             kunde_zugferd = False
-            pdf_bytes = generate_rechnung_pdf(rechnung, unt_dict, ist_kopie=False, ist_entwurf=ist_entwurf, ist_netto=ist_netto)
+            fallback_vorlage = vorlage if vorlage >= 0 else int(unt_dict.get("pdf_vorlage") or 0)
+            fallback_generator = generate_rechnung_pdf_vorlage2 if fallback_vorlage == 2 else generate_rechnung_pdf
+            pdf_bytes = fallback_generator(rechnung, unt_dict, ist_kopie=False, ist_entwurf=ist_entwurf, ist_netto=ist_netto)
     else:
         vorlage_nr = vorlage if vorlage >= 0 else int(unt_dict.get("pdf_vorlage") or 0)
         if vorlage_nr == 1:
             pdf_bytes = generate_rechnung_pdf_vorlage1(rechnung, unt_dict, ist_kopie=False, ist_entwurf=ist_entwurf, ist_netto=ist_netto)
+        elif vorlage_nr == 2:
+            pdf_bytes = generate_rechnung_pdf_vorlage2(rechnung, unt_dict, ist_kopie=False, ist_entwurf=ist_entwurf, ist_netto=ist_netto)
         else:
             pdf_bytes = generate_rechnung_pdf(rechnung, unt_dict, ist_kopie=False, ist_entwurf=ist_entwurf, ist_netto=ist_netto)
 
@@ -3295,7 +3298,7 @@ def ersatzrechnung_erstellen(rechnung_id: int, db: Session = Depends(get_db)):
     heute = date.today()
     rechnungsnummer = _naechste_rechnungsnummer(heute, db)
     unternehmen = db.query(Unternehmen).first()
-    zahlungsziel = getattr(unternehmen, "standard_zahlungsziel", 14) or 14
+    zahlungsziel = standard_zahlungsziel(unternehmen)
     from datetime import timedelta
     faellig_am = heute + timedelta(days=int(zahlungsziel))
 
@@ -4146,7 +4149,7 @@ def rechnung_aus_angebot(angebot_id: int, db: Session = Depends(get_db)):
     heute = date.today()
     rechnungsnummer = _naechste_rechnungsnummer(heute, db)
     unternehmen = db.query(Unternehmen).first()
-    zahlungsziel = getattr(unternehmen, "standard_zahlungsziel", 14) or 14
+    zahlungsziel = standard_zahlungsziel(unternehmen)
     from datetime import timedelta
     faellig_am = heute + timedelta(days=int(zahlungsziel))
 
@@ -4209,7 +4212,7 @@ def proforma_aus_angebot(angebot_id: int, db: Session = Depends(get_db)):
     proforma_nr = _naechste_proformanummer(heute, db)
 
     _unt = db.query(Unternehmen).first()
-    _zt = int(getattr(_unt, "standard_zahlungsziel", 14) or 14) if _unt else 14
+    _zt = standard_zahlungsziel(_unt)
     from datetime import timedelta as _td
     _faellig = heute + _td(days=_zt)
 
@@ -4505,7 +4508,7 @@ def rechnung_aus_auftrag(auftrag_id: int, db: Session = Depends(get_db)):
     heute = date.today()
     rechnungsnummer = _naechste_rechnungsnummer(heute, db)
     unternehmen = db.query(Unternehmen).first()
-    zahlungsziel = getattr(unternehmen, "standard_zahlungsziel", 14) or 14
+    zahlungsziel = standard_zahlungsziel(unternehmen)
     from datetime import timedelta
     faellig_am = heute + timedelta(days=int(zahlungsziel))
 
