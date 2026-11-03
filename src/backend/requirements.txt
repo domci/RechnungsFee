@@ -10,7 +10,10 @@ segno==1.6.1
 drafthorse
 factur-x
 lxml
-pypdf
+# Sicherheitsminimum für PDF-Import (GHSA-5849-834g-hvw5 u.a.).
+pypdf==6.21.4
+# Vertrauensspeicher ohne kompromittierte emSign-Wurzeln (GHSA-6q48-6c7w-9gw2).
+certifi==2026.10.18
 pdfplumber
 pymupdf
 pytesseract
