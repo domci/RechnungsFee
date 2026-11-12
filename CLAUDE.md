@@ -412,3 +412,12 @@ Eingriff auf eine signierte Zeile ein dokumentierter Software-Fix war und keine 
 Manipulation. Die Tabelle selbst ist GoBD-geschützt (`protect_aenderungsprotokoll_update/_delete`
 in `_setup_gobd_triggers()`) und wird im GoBD-Export als `aenderungsprotokoll.csv` mitgeliefert.
 Deckt **nicht** normale Nutzerkorrekturen ab – die laufen über den Storno-Weg.
+
+<!-- ci-wait:start -->
+## CI wait time
+
+- Waiting on CI is work time. While a run is in flight, improve the pipeline: cut slow or redundant jobs and steps, cache dependencies, parallelize or shard, run only what the changed paths need, and drop checks that hooks or another job already own.
+- Use the same wait for the `test-audit` skill (`/test-audit`): remove tests that re-assert source, duplicate stronger proof, or keep test-only seams alive; keep tests that guard shipped contracts.
+- Ship CI and test cleanup as its own small commit or PR, separate from the feature change. Never weaken a release gate, security check, or required status just to make CI faster.
+- Note the run's wall-clock time before and after in the PR or commit message.
+<!-- ci-wait:end -->
